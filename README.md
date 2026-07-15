@@ -1,85 +1,60 @@
-# CAUR Framework for Hyperspectral Image Classification
+# Class-Adaptive Uncertainty Revocation (CAUR) Framework
 
-Code repository accompanying the paper submitted to **Applied Sciences** (MDPI).
+This repository provides the minimal Python implementation of the **Class-Adaptive Uncertainty Revocation (CAUR)** framework, a lightweight post-classification module for improving spatial consistency in remote sensing imagery.
 
-## Overview
+## Features
+- **Classifier Independent:** Can wrap any `scikit-learn` compatible classifier (e.g., Random Forest, SVM, kNN, etc.).
+- **Class-Adaptive Thresholds:** Automatically optimizes entropy thresholds per class using Out-of-Bag (OOB) predictions (for tree-based models) or training set fallback.
+- **Optuna Ready:** Structural hyperparameters (diffusion weight, spatial threshold, etc.) are exposed as standard arguments, allowing for seamless integration with Optuna.
+- **Computationally Lightweight:** Improves spatial coherence without requiring expensive spatial-spectral model retraining.
 
-This repository contains Python code for the **Class-wise Accuracy Update and Refinement (CAUR)** framework. The CAUR framework is an iterative multiclass classification technique designed to systematically improve classification accuracy on hyperspectral satellite imagery by reclassifying low-confidence predictions using a cascade mechanism. The methods are evaluated against standard machine learning classifiers on mineral mapping tasks at the Cuprite mining district, Nevada, USA, and land cover classification at Mito city, Ibaraki, Japan.
+## Installation
 
----
-
-## Directory Structure
-
-```
-Github/
-├── README.md                      # This file
-├── advanced_cascade_acc11.py      # Core CAUR Framework (CascadedACC11 class)
-├── custom_models.py               # Custom wrappers for baseline classifiers (1D-CNN, TabNet, XGBoost, etc.)
-├── pipeline_utils.py              # Utilities for data loading, model training, and accuracy evaluation
-├── pipeline_config.py             # Configuration and hyperparameter settings
-└── run_validation.py              # Main execution script for validation
-```
-
----
-
-## Script Descriptions
-
-### `advanced_cascade_acc11.py` — Core CAUR Framework
-Contains the `CascadedACC11` class, which implements the CAUR framework. The framework iteratively assigns classes based on their cross-validation F1-scores, cascades unclassified samples to subsequent models, and features an adaptive threshold mechanism to fallback on one-vs-rest probabilities.
-
-### `run_validation.py` — Validation Pipeline
-The main execution script to run the CAUR framework and baseline models on dataset features and labels. It evaluates performance across various datasets, comparing the baseline models to their CAUR-enhanced counterparts. Outputs classification metrics (Overall Accuracy, Macro F1, Kappa, MCC).
-
-### `pipeline_utils.py` — Pipeline Utilities
-Contains shared logic for reading classification data, training models across K-Fold cross-validation, applying SMOTE for class imbalance, and computing evaluation metrics.
-
-### `custom_models.py` — Baseline Classifiers
-Defines wrappers for various baseline algorithms so they seamlessly integrate into the pipeline. Includes PyTorch-based 1D-CNN, TabNet, XGBoost, among standard scikit-learn models.
-
-### `pipeline_config.py` — Configuration Settings
-Stores global variables, hyperparameters for all classifiers, and the definitions of the validation datasets.
-
----
-
-## Requirements
-
-```
-Python >= 3.8
-numpy
-scikit-learn
-xgboost
-lightgbm
-pytorch (torch)
-pytorch-tabnet
-imbalanced-learn
-```
-
-Install dependencies:
+Install the required dependencies:
 ```bash
-pip install numpy scikit-learn xgboost lightgbm torch pytorch-tabnet imbalanced-learn
+pip install -r requirements.txt
 ```
 
----
+## Quick Start
 
-## How to Run
+A complete example demonstrating how to optimize CAUR parameters using Optuna is provided in `example_optuna.py`:
 
-### 1. Configure Input Data Paths
-Before running, edit the dataset configurations inside `pipeline_config.py` to point to your local feature data and labels. Ensure your datasets are formatted properly for ingestion by `pipeline_utils.py`.
-
-### 2. Run Validation Script
 ```bash
-python run_validation.py
+python example_optuna.py
 ```
-This will train the models, apply the CAUR framework, and output the validation results to the `results/` directory as CSV files.
 
----
+### Basic Usage
 
-## Data Availability
+```python
+from sklearn.ensemble import RandomForestClassifier
+from caur import CAURClassifier
 
-AVIRIS data are publicly available from the NASA AVIRIS Data Portal (https://aviris.jpl.nasa.gov/dataportal/). ASTER and EMIT data are available from the NASA EARTHDATA Portal (https://search.earthdata.nasa.gov/). HISUI data can be obtained through the Tellus platform (https://www.tellusxdp.com/).
+# 1. Define your base estimator
+base_model = RandomForestClassifier(n_estimators=100, oob_score=True, random_state=42)
 
----
+# 2. Wrap it with CAUR
+model = CAURClassifier(
+    estimator=base_model,
+    diffusion_weight=0.3,
+    spatial_threshold=3,
+    reconstruction_iters=5
+)
 
-## License
+# 3. Fit the model 
+# (Pass spatial_shape and train_idx for OOB threshold optimization)
+# X_train, y_train are subsets of the full image features.
+model.fit(X_train, y_train, spatial_shape=(H, W), train_idx=train_idx)
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+# 4. Predict
+# X_full contains features for the entire H x W image
+predictions = model.predict(X_full, spatial_shape=(H, W))
+```
+
+## Parameter Description
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `diffusion_weight` | `0.3` | Blend ratio for spatial probability diffusion. `0.0` disables diffusion. |
+| `spatial_threshold`| `3` | Maximum number of same-class neighbors for a pixel to be considered isolated. |
+| `reconstruction_iters`| `5` | Maximum number of iterative majority-vote reconstruction passes. |
+| `percentiles_to_test`| `50..95` | Percentile range tested during class-adaptive entropy threshold optimization. |
